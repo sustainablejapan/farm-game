@@ -19,7 +19,7 @@ const PROGRESS_DELAY = 1500; // 1.5 seconds delay for progress screen
 
 window.gameState = {
     status: 'setup', 
-    setupPhase: 0, // 0: Name, 1: Location, 2: Farm Type, 3: Business Structure
+    setupPhase: 0, // 0: Name, 1: Location, 2: Farm Type, 3: Business Structure (4 phases)
     money: 100000,
     debt: 0, 
     environment: 50,
@@ -35,27 +35,28 @@ window.gameState = {
     pendingDecision: null, 
     currentDecisionIndex: 0, 
     developmentStatus: 'N/A',
+    urbanStatus: 'Rural' // Default to rural
 };
 
 // --- LOCATION DATA (Based on FAO/CAULDRON context) ---
 const LOCATION_DATA = {
     'Japan - Yakushima': {
-        flag: '🇯🇵',
+        flag: 'https://placehold.co/100x60/d00060/ffffff?text=JP',
         name: 'Yakushima, Japan',
-        soil: 'Humic Andosol (Volcanic Ash, High P-Fixation)',
-        climate: 'Monsoon/High Humidity',
+        soil: 'Humic Andosol (Volcanic Ash, High P-Fixation)', 
+        climate: 'Monsoon/High Humidity', 
         developmentStatus: 'Developed',
         startingDebt: 60000,
         initialMoneyPenalty: 30000,
-        basePestRisk: 15,
+        basePestRisk: 15, 
         initialResilience: 25,
         initialInfrastructure: 50,
         commonCrops: ['Tankan Citrus', 'Tea', 'Rice (Paddy)'],
     },
     'Central Asia - Steppe': {
-        flag: '🇰🇿',
+        flag: 'https://placehold.co/100x60/004090/ffcc00?text=KZ',
         name: 'Kazakh Steppe',
-        soil: 'Chernozem / Kastanozem (Dry Steppe)',
+        soil: 'Haplic Chernozem / Kastanozem (Dry Steppe)',
         climate: 'Semi-arid Continental',
         developmentStatus: 'Developing',
         startingDebt: 50000,
@@ -66,7 +67,7 @@ const LOCATION_DATA = {
         commonCrops: ['Wheat', 'Alfalfa', 'Cattle'],
     },
     'East Africa - Highlands': {
-        flag: '🇰🇪',
+        flag: 'https://placehold.co/100x60/007308/ffffff?text=KE',
         name: 'Kenyan Highlands',
         soil: 'Nitosols (Deep Red Clay)',
         climate: 'Tierra Fría (Highland)',
@@ -79,7 +80,7 @@ const LOCATION_DATA = {
         commonCrops: ['Coffee', 'Maize', 'Beans'],
     },
     'Siberia - Taiga': {
-        flag: '🇷🇺',
+        flag: 'https://placehold.co/100x60/003598/c00000?text=RU',
         name: 'Siberian Taiga',
         soil: 'Gelic Cambisol / Dystric Podzoluvisol (Permafrost)',
         climate: 'Cold Continental Taiga',
@@ -92,6 +93,14 @@ const LOCATION_DATA = {
         commonCrops: ['Larch (Forestry)', 'Potatoes', 'Hay'],
     },
 };
+
+// --- FARM TYPE OPTIONS (Based on general feasibility) ---
+const FARM_TYPE_OPTIONS = [
+    { value: "Crop - Grains", label: "🌾 Grains & Row Crops", desc: "Maximize commodity output." },
+    { value: "Livestock - Cattle", label: "🐄 Livestock & Pasture", desc: "Focus on animal husbandry and rangeland." },
+    { value: "Mixed - Veg/Poultry", label: "🐔 Mixed Farming", desc: "Diversified vegetable and small animal production." },
+    { value: "Specialty - Tea/Coffee", label: "🍵 Specialty Tea/Coffee", desc: "High-value, perennial export crop (Specific locations only)." },
+];
 
 // --- GAME DECISION DATA (Simplified for brevity) ---
 const decisionData = [
@@ -291,22 +300,61 @@ window.formatConsequence = function(c) {
 
 // --- CHANCE CARD DATA ---
 const randomEvents = [
-    // ... (events remain the same)
+    { 
+        condition: (s) => s.location.includes('Drylands') && s.climateResilience < 30, 
+        risk: 0.25, 
+        consequence: { money: -20000, hiddenPestRisk: 10, hiddenStress: 5, narrative: "A severe **Heatwave** event cost you! Low resilience caused significant crop damage." }
+    },
+    { 
+        condition: (s) => s.infrastructureLevel < 40, 
+        risk: 0.20, 
+        consequence: { money: -15000, hiddenStress: 15, infrastructureLevel: -10, narrative: "🚨 **Infrastructure Failure!** A storage shed collapsed. Expensive repairs and high stress!" }
+    },
+    {
+        condition: (s) => s.debt > 50000,
+        risk: 0.15,
+        consequence: { money: -10000, hiddenStress: 20, narrative: "The bank reviewed your loan terms and raised your principal repayment due to high risk. Ouch!" }
+    },
+    {
+        condition: (s) => s.environment > 70,
+        risk: 0.10, 
+        consequence: { money: 10000, hiddenPestRisk: -10, narrative: "🎁 **Environmental Bonus!** Your high soil biodiversity attracted natural pollinators. Unexpected mid-season yield boost!" }
+    }
 ];
 
 const FAKE_NEWS_HEADLINES = [
-    // ... (Headlines remain the same)
+    { 
+        condition: (c) => c.healthRisk > 15, 
+        headline: "Local Farmer Caught Using Prohibited 'Super-Pesticide'",
+        penalty: { money: -5000, healthRisk: 10, hiddenStress: 10, narrative: "The local press ran a smear campaign. Minor boycott initiated." }
+    },
+    {
+        condition: (c) => c.environment < -10, 
+        headline: "River Turbidity Spikes: Local Farm Farm Blamed for Fertilizer Runoff",
+        penalty: { money: -10000, environment: -5, hiddenStress: 5, narrative: "Fines issued by environmental agency. Bad press locally." }
+    },
+    {
+        condition: (c) => c.hiddenStress > 20, 
+        headline: "Whistleblower Claims Local Farm Violating Labor Laws",
+        penalty: { money: -15000, hiddenStress: 15, narrative: "Legal fees and temporary labor shortage. Your reputation is stained." }
+    }
 ];
 
+
 const progressMessages = [
-    // ... (Messages remain the same)
+    { text: "Plowing the fields...", emoji: "🚜" },
+    { text: "Mending fences and fixing the one leaky tap.", emoji: "🔨" },
+    { text: "Waiting for the rain... or maybe the loan approval.", emoji: "🌧️" },
+    { text: "Checking soil moisture and praying to the weather gods.", emoji: "💧" },
+    { text: "Reviewing market prices (and crying a little)...", emoji: "📉" },
+    { text: "Managing paperwork and fielding angry phone calls.", emoji: "☎️" },
+    { text: "Just sitting and worrying. It's the farmer's job.", emoji: "☕" }
 ];
 
 window.renderProgressScreen = function(week, decisionConsequences = null) {
     let mainContent = progressMessages[Math.floor(Math.random() * progressMessages.length)];
     let headlineContent = '';
 
-    // Check for "Fake News" or Major Crisis Headline
     if (decisionConsequences) {
         for (const news of FAKE_NEWS_HEADLINES) {
             if (news.condition(decisionConsequences)) {
@@ -444,13 +492,13 @@ window.processPendingDecision = function() {
 
     const decision = decisionData.find(d => d.week === pending.week);
     const choice = decision.choices[pending.choiceIndex];
-    const c = choice.consequence;
-    const state = window.gameState;
+    const c = decision.choices[pending.choiceIndex].consequence; // Get raw consequences for application
 
     // Store the consequences before applying to pass to advanceTurn for NEWS CHECK
     const appliedConsequences = JSON.parse(JSON.stringify(c));
 
     // Apply consequences
+    const state = window.gameState;
     state.money += c.money || 0;
     state.debt += c.debt || 0; 
     state.environment += c.environment || 0;
@@ -486,7 +534,6 @@ window.renderDecisionPrompt = function(week) {
     const index = window.gameState.currentDecisionIndex;
     const choice = decision.choices[index];
 
-    // Clear and build content
     selectionPanel.innerHTML = `
         <p class="text-sm font-black text-amber-600 mb-2">${decision.category}</p>
         <h2 class="text-3xl font-black text-gray-800 mb-6">${decision.prompt}</h2>
@@ -510,25 +557,6 @@ window.renderGame = function() {
     if (state.status === 'setup' || state.setupPhase < 4) {
         document.body.className = '';
         content.innerHTML = window.renderSetupPhase();
-        // Attach listener for the main content area after rendering
-        document.getElementById('content-container').onclick = (e) => {
-            if (e.target.classList.contains('setup-button')) {
-                window.advanceSetupPhase();
-            } else if (e.target.classList.contains('setup-choice')) {
-                // Handle dynamic choice selection
-                const target = e.target.closest('.setup-choice');
-                if (target) {
-                    const group = target.dataset.group;
-                    const value = target.dataset.value;
-                    // Reset all other buttons in the group
-                    document.querySelectorAll(`.setup-choice[data-group="${group}"]`).forEach(btn => btn.classList.remove('selected'));
-                    target.classList.add('selected');
-                    // Store the value temporarily
-                    window.gameState[group] = value;
-                    window.renderGame(); // Re-render to update info panels
-                }
-            }
-        };
         return;
     }
 
@@ -546,7 +574,7 @@ window.renderGame = function() {
         
         // Update all status fields
         document.getElementById('farm-name-display').textContent = state.farmName;
-        document.getElementById('current-location').textContent = state.location || 'N/A';
+        document.getElementById('current-location').textContent = LOCATION_DATA[state.location].name || 'N/A';
         document.getElementById('current-dev-status').textContent = state.developmentStatus || 'N/A';
         document.getElementById('current-biz').textContent = state.businessStructure || 'N/A';
         document.getElementById('week-counter').textContent = `Week ${state.week} of ${MAX_WEEKS}`;
@@ -591,7 +619,7 @@ window.renderGame = function() {
                         <span class="text-xl text-blue-600">📋 Farm Report:</span> ${stressChange}
                     </p>
                 </div>
-                <button onclick="window.advanceTurn()" class="mt-8 w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl transition duration-150 ease-in-out">
+                <button onclick="window.advanceTurn()" class="mt-8 w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition duration-150 ease-in-out">
                     Continue to Next Week (Week ${state.week + 1})
                 </button>`;
         }
@@ -622,26 +650,29 @@ window.renderSetupPhase = function() {
     else if (phase === 1) {
         title = `Perfect, ${state.farmName}. Now, where in the world will you operate?`;
         
+        const currentSelection = state.location;
+        
         const locationButtons = Object.entries(LOCATION_DATA).map(([key, data]) => {
-            const isSelected = key === state.location ? 'selected' : '';
+            const isSelected = key === currentSelection ? 'selected' : '';
             return `
-                <button class="choice-button setup-choice flag-button ${isSelected}" data-group="location" data-value="${key}">
-                    ${data.flag} ${data.name} 
-                    <span class="setup-info">${data.climate} | Role: ${data.developmentStatus}</span>
+                <button class="choice-button setup-choice flag-button ${isSelected}" data-group="location" data-value="${key}" style="background-image: url('${data.flag}')">
+                    <span class="p-1 bg-black/50 w-full">${data.flag} ${data.name}</span>
                 </button>
             `;
         }).join('');
         
-        const selectedData = LOCATION_DATA[state.location] || null;
+        const selectedData = LOCATION_DATA[currentSelection] || LOCATION_DATA[Object.keys(LOCATION_DATA)[0]];
 
         contentHtml = `
-            <p class="text-gray-600 mb-4">Your **starting debt, infrastructure, and climate risks** are set by your location. Choose below:</p>
-            <div class="space-y-3 mb-4">${locationButtons}</div>
-            ${selectedData ? `
+            <p class="text-gray-600 mb-4">Choose your region. Your choice dictates your **soil, climate, and global role**.</p>
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">${locationButtons}</div>
+            
+            <label class="block text-sm font-medium text-gray-700 mb-2">Selected Location:</label>
             <div class="p-3 bg-teal-50 border-l-4 border-teal-500 rounded">
-                <p class="font-bold text-teal-800">Reality Check:</p>
-                <p class="text-sm text-gray-700">Soil: ${selectedData.soil} | Starting Debt: $${selectedData.startingDebt.toLocaleString()}</p>
-            </div>` : `<p class="text-red-500 font-bold">Click a location to see its details and risks.</p>`}
+                <p class="font-bold text-teal-800">${selectedData.name} (${selectedData.developmentStatus})</p>
+                <p class="text-sm text-gray-700">Soil: ${selectedData.soil} | Climate: ${selectedData.climate}</p>
+                <p class="text-sm text-gray-700">Challenges: ${selectedData.climate}, Starting Debt: $${selectedData.startingDebt.toLocaleString()}</p>
+            </div>
         `;
         buttonText = "CONFIRM LOCATION";
     } 
@@ -650,23 +681,21 @@ window.renderSetupPhase = function() {
     else if (phase === 2) {
         const locationData = LOCATION_DATA[state.location];
         
-        title = `In ${locationData.name} (${locationData.soil}), what will you focus on?`;
+        title = `In ${locationData.name}, what type of production will you focus on?`;
         contentHtml = `
-            <p class="text-gray-600 mb-4">Choose your primary focus and immediate neighborhood type:</p>
+            <p class="text-gray-600 mb-4">Your options are limited by the local ${locationData.soil} soil and ${locationData.climate} climate:</p>
             
+            <label class="block text-sm font-medium text-gray-700 mb-2">Production Type:</label>
             <div class="grid grid-cols-2 gap-4 mb-4">
-                <button class="choice-button setup-choice ${state.farmType === 'Crop - Grains' ? 'selected' : ''}" data-group="farmType" data-value="Crop - Grains">
-                    🌾 Grains & Row Crops
-                </button>
-                <button class="choice-button setup-choice ${state.farmType === 'Livestock - Cattle' ? 'selected' : ''}" data-group="farmType" data-value="Livestock - Cattle">
-                    🐄 Livestock & Pasture
-                </button>
-                <button class="choice-button setup-choice ${state.farmType === 'Mixed - Veg/Poultry' ? 'selected' : ''}" data-group="farmType" data-value="Mixed - Veg/Poultry">
-                    🐔 Mixed Farming
-                </button>
+                ${FARM_TYPE_OPTIONS.map(opt => `
+                    <button class="choice-button setup-choice ${state.farmType === opt.value ? 'selected' : ''}" data-group="farmType" data-value="${opt.value}">
+                        ${opt.label}
+                        <span class="setup-info">${opt.desc}</span>
+                    </button>
+                `).join('')}
             </div>
             
-            <label class="block text-sm font-medium text-gray-700 mb-2">Neighborhood Type (Affects regulation/land cost):</label>
+            <label class="block text-sm font-medium text-gray-700 mb-2">Neighborhood Type (Affection Regulation/Cost):</label>
             <div class="grid grid-cols-2 gap-4">
                 <button class="choice-button setup-choice ${state.urbanStatus === 'Rural' ? 'selected' : ''}" data-group="urbanStatus" data-value="Rural">
                     🏞️ RURAL/REMOTE
@@ -704,14 +733,14 @@ window.renderSetupPhase = function() {
         <div id="content-container" class="p-8">
             <div class="flex items-center justify-center">
                 <div id="main-content-area" class="w-full max-w-2xl">
-                    <h2 class="game-title text-center mb-6">${window.gameState.farmName ? window.gameState.farmName : "FARMING SIMULATOR"}</h2>
+                    <h2 class="game-title text-center mb-6">FARMING SIMULATOR</h2>
                     <div class="dialogue-box">
                         <p class="computer-text">${title}</p>
                     </div>
                     <div id="setup-form-panel" class="bg-white p-6 rounded-xl shadow-lg mt-4">
                         ${contentHtml}
                     </div>
-                    <button class="action-button setup-button mt-4">
+                    <button class="w-full action-button setup-button mt-4">
                         ${buttonText}
                     </button>
                 </div>
@@ -721,7 +750,6 @@ window.renderSetupPhase = function() {
 }
 
 window.startGameSetup = function() {
-    // This is the function that runs on FINAL CONFIRMATION
     const state = window.gameState;
     
     // --- FINAL VALIDATION CHECK ---
@@ -744,7 +772,7 @@ window.startGameSetup = function() {
     if (state.urbanStatus === 'Urban') { state.money -= 10000; state.hiddenStress += 15; state.infrastructureLevel += 10; }
     if (state.farmType.includes('Mixed')) { state.hiddenStress += 20; }
     if (state.businessStructure.includes('Sole Trader')) { state.hiddenStress += 10; }
-    if (state.businessStructure.includes('Cooperative')) { state.money -= 10000; state.hiddenStress -= 10; }
+    if (state.businessStructure.includes('Cooperative')) { state.money -= 10000; window.gameState.hiddenStress -= 10; }
 
     state.setupPhase = 4;
     state.status = 'playing';
@@ -791,112 +819,13 @@ window.advanceSetupPhase = function() {
              window.displayMessage("Please click one option for Business Structure.", 'red');
             return;
         }
-        // If everything is selected, jump to the final start function
-        window.startGameSetup();
+        
+        window.startGameSetup(); // All checks passed, start the game
         return; 
     }
 
     window.renderGame(); 
 }
-
-// (The rest of the rendering and game logic remains the same, using the new conversational flow)
-
-window.renderGame = function() {
-    const state = window.gameState;
-    const content = document.getElementById('main-game-container');
-    
-    // --- Phase 1: Setup Flow (Conversational) ---
-    if (state.status === 'setup' || state.setupPhase < 3) {
-        document.body.className = '';
-        content.innerHTML = window.renderSetupPhase();
-        // Attach listener for the main content area after rendering
-        document.getElementById('content-container').onclick = (e) => {
-            const target = e.target.closest('.setup-choice, .setup-button');
-            if (target && target.classList.contains('setup-button')) {
-                window.advanceSetupPhase();
-            } else if (target && target.classList.contains('setup-choice')) {
-                const group = target.dataset.group;
-                const value = target.dataset.value;
-                // Reset all other buttons in the group
-                document.querySelectorAll(`.setup-choice[data-group="${group}"]`).forEach(btn => btn.classList.remove('selected'));
-                target.classList.add('selected');
-                // Store the value temporarily
-                window.gameState[group] = value;
-                window.renderGame(); // Re-render to update info panels
-            }
-        };
-        return;
-    }
-
-    // --- Phase 2: Game Layout Check ---
-    const playingMain = document.getElementById('playing-main');
-    if (!playingMain || state.week === 0) {
-        content.innerHTML = window.renderPlayingLayout(state);
-    }
-    
-    // --- Phase 3: Update Metrics and Content ---
-    
-    if (document.getElementById('playing-main')) {
-        window.updateMeters();
-        document.body.className = 'p-4 md:p-8';
-        
-        // Update all status fields
-        document.getElementById('farm-name-display').textContent = state.farmName;
-        document.getElementById('current-location').textContent = state.location || 'N/A';
-        document.getElementById('current-dev-status').textContent = state.developmentStatus || 'N/A';
-        document.getElementById('current-biz').textContent = state.businessStructure || 'N/A';
-        document.getElementById('week-counter').textContent = `Week ${state.week} of ${MAX_WEEKS}`;
-        document.getElementById('current-infra').textContent = `${state.infrastructureLevel}%`;
-        document.getElementById('current-resilience').textContent = `${state.climateResilience}%`;
-        document.getElementById('current-debt').textContent = `$${state.debt.toLocaleString()}`;
-
-
-        if (state.week > MAX_WEEKS) {
-            state.status = 'end';
-            window.renderEndGame();
-            return;
-        }
-
-        // Find current decision
-        const currentDecision = decisionData.find(d => d.week === state.week);
-        
-        // Hide progress screen if it's still showing
-        document.getElementById('progress-panel').classList.add('hidden');
-        document.getElementById('progress-panel').classList.remove('flex', 'flex-col'); 
-
-
-        if (currentDecision) {
-            // Decision Screen - Use the new single-choice renderer
-            document.getElementById('consequence-preview-panel').classList.add('hidden');
-            document.getElementById('decision-selection-panel').classList.remove('hidden');
-            window.renderDecisionPrompt(state.week);
-        } else {
-            // Monitoring/No decision week
-            const pestMessage = state.hiddenPestRisk > 70 ? "Pest and disease pressures are spiking! Your crop is visibly unhappy and posting vague complaints on social media." : "Routine monitoring shows stable conditions. The field looks resilient, but the critics are waiting.";
-            const stressChange = state.hiddenStress > 50 ? "Your stress is high; you snapped at the weather forecast and a bookkeeping error cost you $2,000." : "A quiet week; you feel organized and briefly achieved true inner peace (for 15 minutes).";
-            
-            document.getElementById('consequence-preview-panel').classList.add('hidden');
-            document.getElementById('decision-selection-panel').classList.remove('hidden');
-            document.getElementById('decision-selection-panel').innerHTML = `
-                <h2 class="text-3xl font-black text-gray-800 mb-6">Week ${state.week}: Maintenance & Monitoring</h2>
-                <div class="space-y-4">
-                    <p class="p-4 bg-gray-100 text-gray-700 rounded-lg font-semibold">
-                        <span class="text-xl text-blue-600">🐞 Observation:</span> ${pestMessage}
-                    </p>
-                    <p class="p-4 bg-gray-100 text-gray-700 rounded-lg font-semibold">
-                        <span class="text-xl text-blue-600">📋 Farm Report:</span> ${stressChange}
-                    </p>
-                </div>
-                <button onclick="window.advanceTurn()" class="mt-8 w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl transition duration-150 ease-in-out">
-                    Continue to Next Week (Week ${state.week + 1})
-                </button>`;
-        }
-    }
-
-    window.saveStateToFirestore();
-};
-
-// --- SETUP AND END GAME LOGIC ---
 
 window.renderEndGame = function() {
     const state = window.gameState;
