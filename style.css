@@ -95,3 +95,30 @@ body {
 .flag-button:hover {
     border-color: #f97316;
 }
+/* Style for setup buttons that act as options */
+.setup-choice {
+    text-align: center !important;
+    padding: 1.5rem !important;
+}
+.setup-info {
+    font-size: 0.9rem;
+    color: #666; /* Subdued color for details */
+    display: block;
+}
+
+/* Final Bad News Style Adjustments */
+.action-button {
+    width: 100%;
+    padding: 12px 20px;
+    font-size: 1.1rem;
+    font-weight: bold;
+    background: var(--color-secondary);
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background 0.3s;
+}
+.action-button:hover {
+    background: #cc5c00; 
+}
